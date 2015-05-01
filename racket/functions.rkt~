@@ -1,0 +1,4 @@
+#lang racket
+(define cube1
+  (lambda(x)
+    (* x  (* x x))))
