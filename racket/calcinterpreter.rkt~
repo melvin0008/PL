@@ -1,8 +1,0 @@
-#lang plai
-
-(define-type Arith C
-  [numC (n number?)]
-  [plusC (l ArithC?)
-         (r ArithC?)]
-  [multC (l ArithC?)
-         (r ArithC?)])
