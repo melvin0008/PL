@@ -247,7 +247,9 @@ lval* builtin_len(lval* a){
   LASSERT(a, a->cell[0]->count!=0,"Error : Function head passed an empty expression");
 
   lval* x = lval_take(a,0);
-  return lval_num(x->count);
+  lval* count=lval_num(x->count);
+  lval_del(x);
+  return count;
 }
 
 //Tail function
@@ -292,6 +294,14 @@ lval* builtin_join(lval* a) {
   }
 
   lval_del(a);
+  return x;
+}
+
+lval* builtin_cons(lval* a)
+{
+  lval* x=lval_qexpr();
+  x=lval_add(x,lval_pop(a, 0));
+  x=lval_join(x,lval_pop(a,0));
   return x;
 }
 
@@ -407,6 +417,7 @@ lval* builtin(lval* a, char* func) {
   if (strcmp("join", func) == 0) { return builtin_join(a); }
   if (strcmp("eval", func) == 0) { return builtin_eval(a); }
   if (strcmp("len", func) == 0) { return builtin_len(a); }
+  if (strcmp("cons", func) == 0) { return builtin_cons(a); }
   if (strstr("+-/*", func)) { return builtin_op(a, func); }
   lval_del(a);
   return lval_err("Unknown Function!");
@@ -425,7 +436,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
   "                                           \
     number : /-?[0-9]+/; \
-    symbol    : '+' | '-' | '*' | '/' | '%' | /add/ | /mul/ | /sub/ | /div/ | '^' | /min/ | /max/ | /list/ | /eval/ | /head/ | /tail/ | /join/ | /len/;           \
+    symbol    : '+' | '-' | '*' | '/' | '%' | /add/ | /mul/ | /sub/ | /div/ | '^' | /min/ | /max/ | /list/ | /eval/ | /head/ | /tail/ | /join/ | /len/ | /cons/;           \
     sexpr : '(' <expr>* ')' ;\
     qexpr : '{' <expr>* '}' ;\
     expr      : <number> | <symbol> | <sexpr> | <qexpr>; \
