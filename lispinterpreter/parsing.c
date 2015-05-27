@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
   ",
   Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
 
-  puts("myLisp Version 0.0.0.0.4");
+  puts("myLisp Version 0.0.0.0.5");
   puts("Press Ctrl+c to Exit\n");
 
   while (1) {
