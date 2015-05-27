@@ -1,8 +1,11 @@
+//Includes
 #include<stdio.h>
 #include<stdlib.h>
 #include <math.h>
 #include"mpc.h"
 
+
+//Macros
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
@@ -15,6 +18,8 @@
 
 #define LASSERT(args,cond,err)\
    if(!(cond)){ lval_del(args); return lval_err(err);}
+
+
 
 /* If we are compiling on Windows compile these functions */
 #ifdef _WIN32
@@ -41,21 +46,37 @@ void add_history(char* unused) {}
 #include <editline/history.h>
 #endif
 
-enum { LVAL_NUM, LVAL_ERR, LVAL_SYM, LVAL_SEXPR , LVAL_QEXPR};
 
 
-typedef struct lval{
+//Declarations
+struct lval;
+struct lenv;
+
+typedef struct lval lval;
+typedef struct lenv lenv;
+
+
+enum { LVAL_NUM, LVAL_ERR, LVAL_SYM,LVAL_FUN ,LVAL_SEXPR , LVAL_QEXPR};
+
+typedef lval* (*lbuiltin)(lenv*,lval*);
+
+struct lval{
   int type;
   long num;
 
   char* err;
   char* sym;
 
+  lbuiltin fun;
+
   int count;
-  struct lval** cell;
-} lval;
+  lval** cell;
+} ;
 
 void lval_print(lval* v);
+
+//Constructors and destructors
+
 
 /* Create a new number type lval */
 lval* lval_num(long x) {
@@ -101,6 +122,16 @@ lval* lval_qexpr(void) {
   return v;
 }
 
+lval* lval_fun(lbuiltin func){
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_FUN;
+  v->fun =func;
+  return v;
+}
+
+//LVAL Functions
+
+
 //Delete and free memory
 void lval_del(lval* v) {
 
@@ -111,7 +142,7 @@ void lval_del(lval* v) {
     /* For Err or Sym free the string data */
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
-
+    case LVAL_FUN: break;
     /* If Sexpr then delete all elements inside */
     case LVAL_QEXPR:
     case LVAL_SEXPR:
@@ -135,7 +166,67 @@ lval* lval_add(lval* v, lval* x) {
   return v;
 }
 
+//Copy lvals
+lval* lval_copy(lval* v) {
+  
+  lval* x = malloc(sizeof(lval));
+  x->type = v->type;
+  
+  switch (v->type) {
+    
+    /* Copy Functions and Numbers Directly */
+    case LVAL_FUN: x->fun = v->fun; break;
+    case LVAL_NUM: x->num = v->num; break;
+    
+    /* Copy Strings using malloc and strcpy */
+    case LVAL_ERR:
+      x->err = malloc(strlen(v->err) + 1);
+      strcpy(x->err, v->err); break;
+    
+    case LVAL_SYM:
+      x->sym = malloc(strlen(v->sym) + 1);
+      strcpy(x->sym, v->sym); break;
 
+    /* Copy Lists by copying each sub-expression */
+    case LVAL_SEXPR:
+    case LVAL_QEXPR:
+      x->count = v->count;
+      x->cell = malloc(sizeof(lval*) * x->count);
+      for (int i = 0; i < x->count; i++) {
+        x->cell[i] = lval_copy(v->cell[i]);
+      }
+    break;
+  }
+  
+  return x;
+}
+// Pop a cell
+lval* lval_pop(lval* v, int i) {
+  /* Find the item at "i" */
+  lval* x = v->cell[i];
+
+  /* Shift memory after the item at "i" over the top */
+  memmove(&v->cell[i], &v->cell[i+1],
+    sizeof(lval*) * (v->count-i-1));
+
+  /* Decrease the count of items in the list */
+  v->count--;
+
+  /* Reallocate the memory used */
+  v->cell = realloc(v->cell, sizeof(lval*) * v->count);
+  return x;
+}
+
+// Pop and delete the list
+lval* lval_take(lval* v, int i) {
+  lval* x = lval_pop(v, i);
+  lval_del(v);
+  return x;
+}
+
+
+
+//Print Functions
 void lval_expr_print(lval* v, char open, char close) {
   putchar(open);
   for (int i = 0; i < v->count; i++) {
@@ -160,11 +251,14 @@ void lval_print(lval* v) {
     case LVAL_SYM:   printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
     case LVAL_QEXPR: lval_expr_print(v, '{', '}'); break;
+    case LVAL_FUN:   printf("<function>"); break;
   }
 }
 
 void lval_println(lval* v) { lval_print(v); putchar('\n'); }
 
+
+//Read functions
 //Read Numbers
 lval* lval_read_num(mpc_ast_t* t) {
   errno = 0;
@@ -201,31 +295,10 @@ lval* lval_read(mpc_ast_t* t) {
 }
 
 
-// Pop a cell
-lval* lval_pop(lval* v, int i) {
-  /* Find the item at "i" */
-  lval* x = v->cell[i];
-
-  /* Shift memory after the item at "i" over the top */
-  memmove(&v->cell[i], &v->cell[i+1],
-    sizeof(lval*) * (v->count-i-1));
-
-  /* Decrease the count of items in the list */
-  v->count--;
-
-  /* Reallocate the memory used */
-  v->cell = realloc(v->cell, sizeof(lval*) * v->count);
-  return x;
-}
-
-// Pop and delete the list
-lval* lval_take(lval* v, int i) {
-  lval* x = lval_pop(v, i);
-  lval_del(v);
-  return x;
-}
 
 lval* lval_eval(lval* v);
+
+//Builtin functions
 lval* builtin(lval* a, char* op);
 lval* builtin_op(lval* a, char* op);
 
@@ -436,7 +509,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
   "                                           \
     number : /-?[0-9]+/; \
-    symbol    : '+' | '-' | '*' | '/' | '%' | /add/ | /mul/ | /sub/ | /div/ | '^' | /min/ | /max/ | /list/ | /eval/ | /head/ | /tail/ | /join/ | /len/ | /cons/;           \
+    symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/  ;           \
     sexpr : '(' <expr>* ')' ;\
     qexpr : '{' <expr>* '}' ;\
     expr      : <number> | <symbol> | <sexpr> | <qexpr>; \
