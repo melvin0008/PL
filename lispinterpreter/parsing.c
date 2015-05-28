@@ -71,11 +71,18 @@ struct lval{
 
   int count;
   lval** cell;
-} ;
+};
+
+struct lenv{
+  int count;
+  char** syms;
+  lval** vals;
+};
+
 
 void lval_print(lval* v);
 
-//Constructors and destructors
+//Constructors and destructors for lval
 
 
 /* Create a new number type lval */
@@ -127,6 +134,30 @@ lval* lval_fun(lbuiltin func){
   v->type = LVAL_FUN;
   v->fun =func;
   return v;
+}
+
+//Constructors and destructors for lenv
+
+lenv* lenv_new(void)
+{
+  lenv* e = malloc(sizeof(lenv));
+  e->count=0;
+  e->syms=NULL;
+  e->lvals=NULL;
+  return e; 
+}
+
+void lenv_del(lenv* v)
+{
+  for (int i = 0; i < v->count; ++i)
+  {
+    free(v->syms[i]);
+    lval_del(v->vals[i]);
+  }
+
+  free(v->syms);
+  free(v->vals);
+  free(v);
 }
 
 //LVAL Functions
