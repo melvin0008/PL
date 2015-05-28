@@ -136,29 +136,6 @@ lval* lval_fun(lbuiltin func){
   return v;
 }
 
-//Constructors and destructors for lenv
-
-lenv* lenv_new(void)
-{
-  lenv* e = malloc(sizeof(lenv));
-  e->count=0;
-  e->syms=NULL;
-  e->lvals=NULL;
-  return e; 
-}
-
-void lenv_del(lenv* v)
-{
-  for (int i = 0; i < v->count; ++i)
-  {
-    free(v->syms[i]);
-    lval_del(v->vals[i]);
-  }
-
-  free(v->syms);
-  free(v->vals);
-  free(v);
-}
 
 //LVAL Functions
 
@@ -460,6 +437,66 @@ lval* lval_eval(lval* v) {
   /* All other lval types remain the same */
   return v;
 }
+
+//Constructors and destructors for lenv
+
+lenv* lenv_new(void)
+{
+  lenv* e = malloc(sizeof(lenv*));
+  e->count=0;
+  e->syms=NULL;
+  e->lvals=NULL;
+  return e; 
+}
+
+void lenv_del(lenv* v)
+{
+  for (int i = 0; i < v->count; i++)
+  {
+    free(v->syms[i]);
+    lval_del(v->vals[i]);
+  }
+
+  free(v->syms);
+  free(v->vals);
+  free(v);
+}
+
+//Get from Environment
+lval* lenv_get(lenv* e, lval* k)
+{
+  for (int i = 0; i < e->count; i++)
+  {
+    if(strcmp(e->syms[i],k->sym)==0)
+    {
+      return lval_copy(e->vals[i]);
+    }
+  }
+
+  return lval_err("Unbound Symbol");
+}
+
+void lenv_put(lenv* e,lval* k,lval*v)
+{
+  for (int i = 0; i < e->count; i++)
+  {
+    if(strcmp(e->syms[i],k->sym)==0)
+    {
+      lval_del(e->vals[i]);
+      e->vals[i]=lval_copy(v);
+      return;
+    }
+  }
+
+  e->count++;
+  e->syms=realloc(e->syms,sizeof(char*)*e->count);
+  e->vals=realloc(e->vals,sizeof(lval*)*e->count);
+
+  e->vals[e->count-1]=lval_copy(v);
+  e->syms[e->count-1] = malloc(strlen(k->sym)+1);
+  strcpy(e->syms[e->count-1],k->sym);
+}
+
 
 
 //Function which carries the actual calculation
