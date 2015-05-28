@@ -304,14 +304,14 @@ lval* lval_read(mpc_ast_t* t) {
 
 
 
-lval* lval_eval(lval* v);
+lval* lval_eval(lenv* ,lval*);
 
 //Builtin functions
-lval* builtin(lval* a, char* op);
-lval* builtin_op(lval* a, char* op);
+lval* builtin(lenv* , lval* , char* );
+lval* builtin_op(lval* , char* );
 
 //Head function
-lval* builtin_head(lval* a){
+lval* builtin_head(lenv* e,lval* a){
   LASSERT(a, a->count==1,"Error : Function 'head' passed too many arguments");
   LASSERT(a, a->cell[0]->type==LVAL_QEXPR,"Error : Function 'head has incorrect type!'");
   LASSERT(a, a->cell[0]->count!=0,"Error : Function head passed an empty expression");
@@ -322,7 +322,7 @@ lval* builtin_head(lval* a){
 }
 
 //Count function
-lval* builtin_len(lval* a){
+lval* builtin_len(lenv* e,lval* a){
   LASSERT(a, a->count==1,"Error : Function 'head' passed too many arguments");
   LASSERT(a, a->cell[0]->type==LVAL_QEXPR,"Error : Function 'head has incorrect type!'");
   LASSERT(a, a->cell[0]->count!=0,"Error : Function head passed an empty expression");
@@ -334,7 +334,7 @@ lval* builtin_len(lval* a){
 }
 
 //Tail function
-lval* builtin_tail(lval* a){
+lval* builtin_tail(lenv* e,lval* a){
   LASSERT(a, a->count==1,"Error : Function 'tail' passed too many arguments");
   LASSERT(a, a->cell[0]->type==LVAL_QEXPR,"Error : Function 'tail' has incorrect type!'");
   LASSERT(a, a->cell[0]->count!=0,"Error : Function tail passed an empty expression");
@@ -344,7 +344,7 @@ lval* builtin_tail(lval* a){
   return x;
 }
 
-lval* builtin_list(lval* a) {
+lval* builtin_list(lenv* e,lval* a) {
   a->type = LVAL_QEXPR;
   return a;
 }
@@ -361,7 +361,7 @@ lval* lval_join(lval* x, lval* y) {
   return x;
 }
 
-lval* builtin_join(lval* a) {
+lval* builtin_join(lenv* e,lval* a) {
 
   for (int i = 0; i < a->count; i++) {
     LASSERT(a, a->cell[i]->type == LVAL_QEXPR,
@@ -378,7 +378,7 @@ lval* builtin_join(lval* a) {
   return x;
 }
 
-lval* builtin_cons(lval* a)
+lval* builtin_cons(lenv* e,lval* a)
 {
   lval* x=lval_qexpr();
   x=lval_add(x,lval_pop(a, 0));
@@ -386,7 +386,7 @@ lval* builtin_cons(lval* a)
   return x;
 }
 
-lval* builtin_eval(lval* a) {
+lval* builtin_eval(lenv* e,lval* a) {
   LASSERT(a, a->count == 1,
     "Function 'eval' passed too many arguments!");
   LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
@@ -394,17 +394,17 @@ lval* builtin_eval(lval* a) {
 
   lval* x = lval_take(a, 0);
   x->type = LVAL_SEXPR;
-  return lval_eval(x);
+  return lval_eval(e,x);
 }
 
 
 
 //Evaluate Sexpression
-lval* lval_eval_sexpr(lval* v) {
+lval* lval_eval_sexpr(lenv* e,lval* v) {
 
   /* Evaluate Children */
   for (int i = 0; i < v->count; i++) {
-    v->cell[i] = lval_eval(v->cell[i]);
+    v->cell[i] = lval_eval(e,v->cell[i]);
   }
 
   /* Error Checking */
@@ -420,20 +420,26 @@ lval* lval_eval_sexpr(lval* v) {
 
   /* Ensure First Element is Symbol */
   lval* f = lval_pop(v, 0);
-  if (f->type != LVAL_SYM) {
+  if (f->type != LVAL_FUN) {
     lval_del(f); lval_del(v);
     return lval_err("S-expression Does not start with symbol!");
   }
 
   /* Call builtin with operator */
-  lval* result = builtin(v, f->sym);
+  lval* result = f->fun(e,v);
   lval_del(f);
   return result;
 }
 
-lval* lval_eval(lval* v) {
+lval* lval_eval(lenv* e,lval* v) {
+
+  if (v->type == LVAL_SYM) {
+    lval* x = lenv_get(e, v);
+    lval_del(v);
+    return x;
+  }
   /* Evaluate Sexpressions */
-  if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(v); }
+  if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(e,v); }
   /* All other lval types remain the same */
   return v;
 }
@@ -497,6 +503,21 @@ void lenv_put(lenv* e,lval* k,lval*v)
   strcpy(e->syms[e->count-1],k->sym);
 }
 
+lval* builtin_add(lenv* e, lval* a) {
+  return builtin_op(e, a, "+");
+}
+
+lval* builtin_sub(lenv* e, lval* a) {
+  return builtin_op(e, a, "-");
+}
+
+lval* builtin_mul(lenv* e, lval* a) {
+  return builtin_op(e, a, "*");
+}
+
+lval* builtin_div(lenv* e, lval* a) {
+  return builtin_op(e, a, "/");
+}
 
 
 //Function which carries the actual calculation
@@ -551,8 +572,8 @@ lval* builtin_op(lval* a, char* op) {
   lval_del(a); return x;
 }
 
-lval* builtin(lval* a, char* func) {
-  if (strcmp("list", func) == 0) { return builtin_list(a); }
+lval* builtin(lenv* e,lval* a, char* func) {
+  if (strcmp("list", func) == 0) { return builtin_list(e,a); }
   if (strcmp("head", func) == 0) { return builtin_head(a); }
   if (strcmp("tail", func) == 0) { return builtin_tail(a); }
   if (strcmp("join", func) == 0) { return builtin_join(a); }
