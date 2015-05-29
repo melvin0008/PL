@@ -308,7 +308,7 @@ lval* lval_eval(lenv* ,lval*);
 
 //Builtin functions
 lval* builtin(lenv* , lval* , char* );
-lval* builtin_op(lval* , char* );
+lval* builtin_op(lenv*, lval* , char* );
 
 //Head function
 lval* builtin_head(lenv* e,lval* a){
@@ -431,19 +431,6 @@ lval* lval_eval_sexpr(lenv* e,lval* v) {
   return result;
 }
 
-lval* lval_eval(lenv* e,lval* v) {
-
-  if (v->type == LVAL_SYM) {
-    lval* x = lenv_get(e, v);
-    lval_del(v);
-    return x;
-  }
-  /* Evaluate Sexpressions */
-  if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(e,v); }
-  /* All other lval types remain the same */
-  return v;
-}
-
 //Constructors and destructors for lenv
 
 lenv* lenv_new(void)
@@ -451,7 +438,7 @@ lenv* lenv_new(void)
   lenv* e = malloc(sizeof(lenv*));
   e->count=0;
   e->syms=NULL;
-  e->lvals=NULL;
+  e->vals=NULL;
   return e; 
 }
 
@@ -503,6 +490,46 @@ void lenv_put(lenv* e,lval* k,lval*v)
   strcpy(e->syms[e->count-1],k->sym);
 }
 
+lval* lval_eval(lenv* e,lval* v) {
+
+  if (v->type == LVAL_SYM) {
+    lval* x = lenv_get(e, v);
+    lval_del(v);
+    return x;
+  }
+  /* Evaluate Sexpressions */
+  if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(e,v); }
+  /* All other lval types remain the same */
+  return v;
+}
+
+lval* builtin_def(lenv* e, lval* a) {
+  LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
+    "Function 'def' passed incorrect type!");
+
+  /* First argument is symbol list */
+  lval* syms = a->cell[0];
+
+  /* Ensure all elements of first list are symbols */
+  for (int i = 0; i < syms->count; i++) {
+    LASSERT(a, syms->cell[i]->type == LVAL_SYM,
+      "Function 'def' cannot define non-symbol");
+  }
+
+  /* Check correct number of symbols and values */
+  LASSERT(a, syms->count == a->count-1,
+    "Function 'def' cannot define incorrect "
+    "number of values to symbols");
+
+  /* Assign copies of values to symbols */
+  for (int i = 0; i < syms->count; i++) {
+    lenv_put(e, syms->cell[i], a->cell[i+1]);
+  }
+
+  lval_del(a);
+  return lval_sexpr();
+}
+
 lval* builtin_add(lenv* e, lval* a) {
   return builtin_op(e, a, "+");
 }
@@ -519,9 +546,26 @@ lval* builtin_div(lenv* e, lval* a) {
   return builtin_op(e, a, "/");
 }
 
+lval* builtin_pow(lenv* e, lval* a) {
+  return builtin_op(e, a, "^");
+}
+
+lval* builtin_mod(lenv* e, lval* a) {
+  return builtin_op(e, a, "%");
+}
+
+lval* builtin_min(lenv* e, lval* a) {
+  return builtin_op(e, a, "min");
+}
+
+lval* builtin_max(lenv* e, lval* a) {
+  return builtin_op(e, a, "max");
+}
+
+
 
 //Function which carries the actual calculation
-lval* builtin_op(lval* a, char* op) {
+lval* builtin_op(lenv *e , lval* a, char* op) {
   
   /* Ensure all arguments are numbers */
   for (int i = 0; i < a->count; i++) {
@@ -564,25 +608,47 @@ lval* builtin_op(lval* a, char* op) {
 	  if (strcmp(op, "min") == 0) {  x->num=min(x->num,y->num); }
 	  if (strcmp(op, "max") == 0) {  x->num=max(x->num,y->num); }
 
-
-
     lval_del(y);
   }
 
   lval_del(a); return x;
 }
 
-lval* builtin(lenv* e,lval* a, char* func) {
-  if (strcmp("list", func) == 0) { return builtin_list(e,a); }
-  if (strcmp("head", func) == 0) { return builtin_head(a); }
-  if (strcmp("tail", func) == 0) { return builtin_tail(a); }
-  if (strcmp("join", func) == 0) { return builtin_join(a); }
-  if (strcmp("eval", func) == 0) { return builtin_eval(a); }
-  if (strcmp("len", func) == 0) { return builtin_len(a); }
-  if (strcmp("cons", func) == 0) { return builtin_cons(a); }
-  if (strstr("+-/*", func)) { return builtin_op(a, func); }
-  lval_del(a);
-  return lval_err("Unknown Function!");
+void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
+  lval* k = lval_sym(name);
+  lval* v = lval_fun(func);
+  lenv_put(e, k, v);
+  lval_del(k); lval_del(v);
+}
+
+
+void lenv_add_builtins(lenv* e) { 
+ 
+  /* Define variables */
+  lenv_add_builtin(e, "def",  builtin_def);
+
+  /* List Functions */
+  lenv_add_builtin(e, "list", builtin_list);
+  lenv_add_builtin(e, "head", builtin_head);
+  lenv_add_builtin(e, "tail", builtin_tail);
+  lenv_add_builtin(e, "eval", builtin_eval);
+  lenv_add_builtin(e, "join", builtin_join);
+
+  /* Mathematical Functions */
+  lenv_add_builtin(e, "+", builtin_add);
+  lenv_add_builtin(e, "-", builtin_sub);
+  lenv_add_builtin(e, "*", builtin_mul);
+  lenv_add_builtin(e, "/", builtin_div);
+  lenv_add_builtin(e, "%", builtin_mod);
+  lenv_add_builtin(e, "^", builtin_pow);
+  lenv_add_builtin(e, "min", builtin_min);
+  lenv_add_builtin(e, "max", builtin_max);
+  lenv_add_builtin(e, "add", builtin_add);
+  lenv_add_builtin(e, "sub", builtin_sub);
+  lenv_add_builtin(e, "mul", builtin_mul);
+  lenv_add_builtin(e, "div", builtin_div);
+
+
 }
 
 //Main Function
@@ -598,7 +664,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
   "                                           \
     number : /-?[0-9]+/; \
-    symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/  ;           \
+    symbol    : /[a-zA-Z0-9_+\\^\\-*\\/\\\\=<>!&]+/  ;           \
     sexpr : '(' <expr>* ')' ;\
     qexpr : '{' <expr>* '}' ;\
     expr      : <number> | <symbol> | <sexpr> | <qexpr>; \
@@ -609,6 +675,9 @@ int main(int argc, char** argv) {
   puts("myLisp Version 0.0.0.0.6");
   puts("Press Ctrl+c to Exit\n");
 
+  lenv* e = lenv_new();
+  lenv_add_builtins(e);
+
   while (1) {
 
   	char* input = readline("mylisp> ");
@@ -617,22 +686,24 @@ int main(int argc, char** argv) {
 
     mpc_result_t r;
 
-	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
-	  /* On Success Print the AST */
-	  // lval result = eval(r.output);
-	  lval* x = lval_eval(lval_read(r.output));
-	  lval_println(x);
-	  lval_del(x);
-	  mpc_ast_delete(r.output);
+  	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
+  	  /* On Success Print the AST */
+  	  // lval result = eval(r.output);
+  	  lval* x = lval_eval(e,lval_read(r.output));
+  	  lval_println(x);
+  	  lval_del(x);
+  	  mpc_ast_delete(r.output);
 
-	} else {
-	  /* Otherwise Print the Error */
-	  mpc_err_print(r.error);
-	  mpc_err_delete(r.error);
-	}
+  	} else {
+  	  /* Otherwise Print the Error */
+  	  mpc_err_print(r.error);
+  	  mpc_err_delete(r.error);
+  	}
 
     free(input);
   }
+
+  lenv_del(e);
 
   mpc_cleanup(5, Number, Symbol, Sexpr, Qexpr, Expression, Mylisp);
   return 0;
