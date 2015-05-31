@@ -566,7 +566,7 @@ lval* builtin_def(lenv* e, lval* a) {
     "Function 'def' passed too many arguments for symbols. "
     "Got %i, Expected %i.",
     syms->count, a->count-1);
-  
+
   /* Assign copies of values to symbols */
   for (int i = 0; i < syms->count; i++) {
     lenv_put(e, syms->cell[i], a->cell[i+1]);
@@ -715,7 +715,7 @@ int main(int argc, char** argv) {
   ",
   Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
 
-  puts("myLisp Version 0.0.0.0.6");
+  puts("myLisp Version 0.0.0.0.7");
   puts("Press Ctrl+c to Exit\n");
 
   lenv* e = lenv_new();
