@@ -84,7 +84,10 @@ struct lval{
   char* err;
   char* sym;
 
-  lbuiltin fun;
+  lbuiltin builtin;
+  lenv* env;
+  lval* formals;
+  lval* body;
 
   int count;
   lval** cell;
@@ -165,8 +168,24 @@ lval* lval_qexpr(void) {
 lval* lval_fun(lbuiltin func){
   lval* v = malloc(sizeof(lval));
   v->type = LVAL_FUN;
-  v->fun =func;
+  v->builtin =func;
   return v;
+}
+
+lval* lval_lambda(lval* formals, lval* body) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_FUN;
+
+  /* Set Builtin to Null */
+  v->builtin = NULL;
+
+  /* Build new environment */
+  v->env = lenv_new();
+
+  /* Set Formals and Body */
+  v->formals = formals;
+  v->body = body;
+  return v;  
 }
 
 char* ltype_name(int t) {
@@ -194,7 +213,13 @@ void lval_del(lval* v) {
     /* For Err or Sym free the string data */
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
-    case LVAL_FUN: break;
+    case LVAL_FUN: 
+        if (!v->builtin) {
+          lenv_del(v->env);
+          lval_del(v->formals);
+          lval_del(v->body);
+        }
+        break;
     /* If Sexpr then delete all elements inside */
     case LVAL_QEXPR:
     case LVAL_SEXPR:
@@ -227,7 +252,16 @@ lval* lval_copy(lval* v) {
   switch (v->type) {
     
     /* Copy Functions and Numbers Directly */
-    case LVAL_FUN: x->fun = v->fun; break;
+    case LVAL_FUN:
+      if (v->builtin) {
+        x->builtin = v->builtin;
+      } else {
+        x->builtin = NULL;
+        x->env = lenv_copy(v->env);
+        x->formals = lval_copy(v->formals);
+        x->body = lval_copy(v->body);
+      }
+      break;
     case LVAL_NUM: x->num = v->num; break;
     
     /* Copy Strings using malloc and strcpy */
@@ -303,7 +337,14 @@ void lval_print(lval* v) {
     case LVAL_SYM:   printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
     case LVAL_QEXPR: lval_expr_print(v, '{', '}'); break;
-    case LVAL_FUN:   printf("<function>"); break;
+    case LVAL_FUN:   
+      if (v->builtin) {
+        printf("<builtin>");
+      } else {
+        printf("(\\ "); lval_print(v->formals);
+        putchar(' '); lval_print(v->body); putchar(')');
+      }
+      break;
   }
 }
 
@@ -470,7 +511,7 @@ lval* lval_eval_sexpr(lenv* e,lval* v) {
   }
 
   /* Call builtin with operator */
-  lval* result = f->fun(e,v);
+  lval* result = f->builtin(e,v);
   lval_del(f);
   return result;
 }
