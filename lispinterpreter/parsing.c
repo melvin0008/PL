@@ -94,6 +94,7 @@ struct lval{
 };
 
 struct lenv{
+  lenv* par;
   int count;
   char** syms;
   lval** vals;
@@ -479,6 +480,28 @@ lval* builtin_eval(lenv* e,lval* a) {
   return lval_eval(e,x);
 }
 
+lval* builtin_lambda(lenv* e , lval*a)
+{
+  LASSERT_NUM("\\", a, 2);
+  LASSERT_TYPE("\\", a, 0, LVAL_QEXPR);
+  LASSERT_TYPE("\\", a, 1, LVAL_QEXPR);
+
+  for (int i = 0; i < a->cell[0]->count; i++) {
+    LASSERT(a, (a->cell[0]->cell[i]->type == LVAL_SYM),
+      "Cannot define non-symbol. Got %s, Expected %s.",
+      ltype_name(a->cell[0]->cell[i]->type),ltype_name(LVAL_SYM));
+  }
+
+  lval* formals = lval_pop(a, 0);
+  lval* body = lval_pop(a, 0);
+  lval_del(a);
+  
+  return lval_lambda(formals, body);
+
+
+
+}
+
 
 
 //Evaluate Sexpression
@@ -522,6 +545,7 @@ lenv* lenv_new(void)
 {
   lenv* e = malloc(sizeof(lenv*));
   e->count=0;
+  e->par = NULL;
   e->syms=NULL;
   e->vals=NULL;
   return e; 
@@ -550,8 +574,12 @@ lval* lenv_get(lenv* e, lval* k)
       return lval_copy(e->vals[i]);
     }
   }
-
-  return lval_err("Unbound Symbol '%s' ",k->sym);
+  if (e->par) {
+    return lenv_get(e->par, k);
+  } else {
+    return lval_err("Unbound Symbol '%s'", k->sym);
+  }
+  
 }
 
 void lenv_put(lenv* e,lval* k,lval*v)
@@ -566,6 +594,7 @@ void lenv_put(lenv* e,lval* k,lval*v)
     }
   }
 
+
   e->count++;
   e->syms=realloc(e->syms,sizeof(char*)*e->count);
   e->vals=realloc(e->vals,sizeof(lval*)*e->count);
@@ -573,6 +602,27 @@ void lenv_put(lenv* e,lval* k,lval*v)
   e->vals[e->count-1]=lval_copy(v);
   e->syms[e->count-1] = malloc(strlen(k->sym)+1);
   strcpy(e->syms[e->count-1],k->sym);
+}
+
+void lenv_def(lenv* e, lval* k, lval* v) {
+  /* Iterate till e has no parent */
+  while (e->par) { e = e->par; }
+  /* Put value in e */
+  lenv_put(e, k, v);
+}
+
+lenv* lenv_copy(lenv* e) {
+  lenv* n = malloc(sizeof(lenv));
+  n->par = e->par;
+  n->count = e->count;
+  n->syms = malloc(sizeof(char*) * n->count);
+  n->vals = malloc(sizeof(lval*) * n->count);
+  for (int i = 0; i < e->count; i++) {
+    n->syms[i] = malloc(strlen(e->syms[i]) + 1);
+    strcpy(n->syms[i], e->syms[i]);
+    n->vals[i] = lval_copy(e->vals[i]);
+  }
+  return n;
 }
 
 lval* lval_eval(lenv* e,lval* v) {
@@ -588,8 +638,8 @@ lval* lval_eval(lenv* e,lval* v) {
   return v;
 }
 
-lval* builtin_def(lenv* e, lval* a) {
-  LASSERT_TYPE("def", a, 0, LVAL_QEXPR);
+lval* builtin_var(lenv* e, lval* a,char* func) {
+  LASSERT_TYPE(func, a, 0, LVAL_QEXPR);
   
   /* First argument is symbol list */
   lval* syms = a->cell[0];
@@ -610,12 +660,28 @@ lval* builtin_def(lenv* e, lval* a) {
 
   /* Assign copies of values to symbols */
   for (int i = 0; i < syms->count; i++) {
-    lenv_put(e, syms->cell[i], a->cell[i+1]);
+    if (strcmp(func, "def") == 0) {
+      lenv_def(e, syms->cell[i], a->cell[i+1]);
+    }
+    
+    if (strcmp(func, "=")   == 0) {
+      lenv_put(e, syms->cell[i], a->cell[i+1]);
+    } 
   }
 
   lval_del(a);
   return lval_sexpr();
 }
+
+
+lval* builtin_def(lenv* e, lval* a) {
+  return builtin_var(e, a, "def");
+}
+
+lval* builtin_put(lenv* e, lval* a) {
+  return builtin_var(e, a, "=");
+}
+
 
 lval* builtin_add(lenv* e, lval* a) {
   return builtin_op(e, a, "+");
@@ -709,7 +775,8 @@ void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
 void lenv_add_builtins(lenv* e) { 
  
   /* Define variables */
-  lenv_add_builtin(e, "def",  builtin_def);
+  lenv_add_builtin(e, "def", builtin_def);
+  lenv_add_builtin(e, "=",   builtin_put);
 
   /* List Functions */
   lenv_add_builtin(e, "list", builtin_list);
