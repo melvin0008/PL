@@ -539,6 +539,7 @@ lval* lval_call(lenv* e, lval* f, lval* a) {
 
     /* Pop the first symbol from the formals */
     lval* sym = lval_pop(f->formals, 0);
+ 
 
     if (strcmp(sym->sym, "&") == 0) {
 
@@ -559,6 +560,7 @@ lval* lval_call(lenv* e, lval* f, lval* a) {
 
     /* Pop the next argument from the list */
     lval* val = lval_pop(a, 0);
+
 
     /* Bind a copy into the function's environment */
     lenv_put(f->env, sym, val);
@@ -934,7 +936,7 @@ int main(int argc, char** argv) {
   ",
   Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
 
-  puts("myLisp Version 0.0.0.0.7");
+  puts("myLisp Version 0.0.0.0.8");
   puts("Press Ctrl+c to Exit\n");
 
   lenv* e = lenv_new();
