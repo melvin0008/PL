@@ -854,7 +854,7 @@ lval* builtin_max(lenv* e, lval* a) {
 }
 
 
-int lval_eq(lval* x, lval* y) {
+int lval_eq(lenv* e,lval* x, lval* y) {
 
   /* Different Types are always unequal */
   if (x->type != y->type) { return 0; }
@@ -873,18 +873,34 @@ int lval_eq(lval* x, lval* y) {
       if (x->builtin || y->builtin) {
         return x->builtin == y->builtin;
       } else {
-        return lval_eq(x->formals, y->formals) 
-          && lval_eq(x->body, y->body);
+        return lval_eq(e,x->formals,y->formals)  && lval_eq(e,x->body,y->body);
       }
 
     /* If list compare every individual element */
     case LVAL_QEXPR:
     case LVAL_SEXPR:
       if (x->count != y->count) { return 0; }
+
+       lval* x1= lval_copy(x);
+       lval* y1= lval_copy(y);
+
+      // lval_print(lval_eval(e,x1));
+      // printf("%ld\n",abc->num);
+
+      // lval_print(lval_eval_sexpr(e,x));
+      // printf()
+      // lval_print(lval_eval_sexpr(e,y));
+      if(lval_eq(e,lval_eval(e,x1),lval_eval(e,y1))){return 1;}
+      
+      lval_del(x1);
+      lval_del(y1);
+
+
       for (int i = 0; i < x->count; i++) {
-        /* If any element not equal then whole list not equal */
-        if (!lval_eq(x->cell[i], y->cell[i])) { return 0; }
+         // If any element not equal then whole list not equal 
+         if (!lval_eq(e,x->cell[i], y->cell[i])) { return 0; }
       }
+
       /* Otherwise lists must be equal */
       return 1;
     break;
@@ -896,10 +912,10 @@ lval* builtin_cmp(lenv* e, lval* a, char* op) {
   LASSERT_NUM(op, a, 2);
   int r;
   if (strcmp(op, "==") == 0) {
-    r =  lval_eq(a->cell[0], a->cell[1]);
+    r =  lval_eq(e,a->cell[0], a->cell[1]);
   }
   if (strcmp(op, "!=") == 0) {
-    r = !lval_eq(a->cell[0], a->cell[1]);
+    r = !lval_eq(e,a->cell[0], a->cell[1]);
   }
   lval_del(a);
   return lval_num(r);
