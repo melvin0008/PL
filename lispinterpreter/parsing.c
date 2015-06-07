@@ -101,8 +101,12 @@ struct lenv{
 };
 
 
-void lval_print(lval* v);
-lval* lval_err(char* fmt, ...);
+void lval_print(lval* );
+lval* lval_err(char* , ...);
+lenv* lenv_new(void);
+void lenv_del(lenv* );
+lenv* lenv_copy(lenv* );
+void lenv_put(lenv*,lval* ,lval*);
 
 //Constructors and destructors for lval
 
@@ -497,12 +501,73 @@ lval* builtin_lambda(lenv* e , lval*a)
   lval_del(a);
   
   return lval_lambda(formals, body);
+}
+void printcell(lval* v){
 
-
+  for(int i=0;i<v->count;i++){
+    printf("%d -> ",i);
+    // if(v->cell[i]->count)
+    // {
+    //   printf("Count %d\n",v->cell[i]->count);
+    // }
+    lval_print(v->cell[i]);
+    printf("\n");
+  }
 
 }
 
 
+lval* lval_call(lenv* e, lval* f, lval* a) {
+
+  printf("in\n");
+  /* If Builtin then simply apply that */
+  if (f->builtin) { return f->builtin(e, a); }
+
+  /* Record Argument Counts */
+  int given = a->count;
+  int total = f->formals->count;
+
+  /* While arguments still remain to be processed */
+  while (a->count) {
+
+    /* If we've ran out of formal arguments to bind */
+    if (f->formals->count == 0) {
+      lval_del(a); return lval_err(
+        "Function passed too many arguments. "
+        "Got %i, Expected %i.", given, total); 
+    }
+
+    /* Pop the first symbol from the formals */
+    lval* sym = lval_pop(f->formals, 0);
+
+    /* Pop the next argument from the list */
+    lval* val = lval_pop(a, 0);
+
+    /* Bind a copy into the function's environment */
+    lenv_put(f->env, sym, val);
+
+    /* Delete symbol and value */
+    lval_del(sym); lval_del(val);
+  }
+
+  /* Argument list is now bound so can be cleaned up */
+  lval_del(a);
+
+  /* If all formals have been bound evaluate */
+  if (f->formals->count == 0) {
+
+    /* Set environment parent to evaluation environment */
+    f->env->par = e;
+
+    /* Evaluate and return */
+    return builtin_eval(
+      f->env, lval_add(lval_sexpr(), lval_copy(f->body)));
+  } else {
+    /* Otherwise return partially evaluated function */
+    return lval_copy(f);
+  }
+
+}
 
 //Evaluate Sexpression
 lval* lval_eval_sexpr(lenv* e,lval* v) {
@@ -523,18 +588,18 @@ lval* lval_eval_sexpr(lenv* e,lval* v) {
   /* Single Expression */
   if (v->count == 1) { return lval_take(v, 0); }
 
-  /* Ensure First Element is Symbol */
+
   lval* f = lval_pop(v, 0);
   if (f->type != LVAL_FUN) {
-    lval_del(f); lval_del(v);
-    return lval_err(
+    lval* err = lval_err(
       "S-Expression starts with incorrect type. "
       "Got %s, Expected %s.",
       ltype_name(f->type), ltype_name(LVAL_FUN));
+    lval_del(f); lval_del(v);
+    return err;
   }
 
-  /* Call builtin with operator */
-  lval* result = f->builtin(e,v);
+  lval* result = lval_call(e, f, v);
   lval_del(f);
   return result;
 }
@@ -543,7 +608,7 @@ lval* lval_eval_sexpr(lenv* e,lval* v) {
 
 lenv* lenv_new(void)
 {
-  lenv* e = malloc(sizeof(lenv*));
+  lenv* e = malloc(sizeof(lenv));
   e->count=0;
   e->par = NULL;
   e->syms=NULL;
@@ -625,6 +690,8 @@ lenv* lenv_copy(lenv* e) {
   return n;
 }
 
+
+
 lval* lval_eval(lenv* e,lval* v) {
 
   if (v->type == LVAL_SYM) {
@@ -644,6 +711,7 @@ lval* builtin_var(lenv* e, lval* a,char* func) {
   /* First argument is symbol list */
   lval* syms = a->cell[0];
 
+
   /* Ensure all elements of first list are symbols */
   for (int i = 0; i < syms->count; i++) {
   LASSERT(a, (syms->cell[i]->type == LVAL_SYM),
@@ -657,6 +725,7 @@ lval* builtin_var(lenv* e, lval* a,char* func) {
     "Function 'def' passed too many arguments for symbols. "
     "Got %i, Expected %i.",
     syms->count, a->count-1);
+
 
   /* Assign copies of values to symbols */
   for (int i = 0; i < syms->count; i++) {
@@ -777,6 +846,9 @@ void lenv_add_builtins(lenv* e) {
   /* Define variables */
   lenv_add_builtin(e, "def", builtin_def);
   lenv_add_builtin(e, "=",   builtin_put);
+  lenv_add_builtin(e, "\\",  builtin_lambda);
+  lenv_add_builtin(e, "lambda",  builtin_lambda);
+
 
   /* List Functions */
   lenv_add_builtin(e, "list", builtin_list);
@@ -839,12 +911,12 @@ int main(int argc, char** argv) {
 
   	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
   	  /* On Success Print the AST */
-  	  // lval result = eval(r.output);
-  	  lval* x = lval_eval(e,lval_read(r.output));
+      // printcell(lval_read(r.output));
+  	  // lval_expr_print(lval_read(r.output),'{','}');
+      lval* x = lval_eval(e,lval_read(r.output));
   	  lval_println(x);
   	  lval_del(x);
   	  mpc_ast_delete(r.output);
-
   	} else {
   	  /* Otherwise Print the Error */
   	  mpc_err_print(r.error);
