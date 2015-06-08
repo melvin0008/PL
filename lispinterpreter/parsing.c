@@ -884,12 +884,6 @@ int lval_eq(lenv* e,lval* x, lval* y) {
        lval* x1= lval_copy(x);
        lval* y1= lval_copy(y);
 
-      // lval_print(lval_eval(e,x1));
-      // printf("%ld\n",abc->num);
-
-      // lval_print(lval_eval_sexpr(e,x));
-      // printf()
-      // lval_print(lval_eval_sexpr(e,y));
       if(lval_eq(e,lval_eval(e,x1),lval_eval(e,y1))){return 1;}
       
       lval_del(x1);
@@ -950,6 +944,30 @@ lval* builtin_ord(lenv* e, lval* a, char* op){
 
 }
 
+lval* builtin_if(lenv* e, lval* a) {
+  LASSERT_NUM("if", a, 3);
+  LASSERT_TYPE("if", a, 0, LVAL_NUM);
+  LASSERT_TYPE("if", a, 1, LVAL_QEXPR);
+  LASSERT_TYPE("if", a, 2, LVAL_QEXPR);
+  
+  /* Mark Both Expressions as evaluable */
+  lval* x;
+  a->cell[1]->type = LVAL_SEXPR;
+  a->cell[2]->type = LVAL_SEXPR;
+  
+  if (a->cell[0]->num) {
+    /* If condition is true evaluate first expression */
+    x = lval_eval(e, lval_pop(a, 1));
+  } else {
+    /* Otherwise evaluate second expression */
+    x = lval_eval(e, lval_pop(a, 2));
+  }
+  
+  /* Delete argument list and return */
+  lval_del(a);
+  return x;
+}
+
 //Function which carries the actual calculation
 lval* builtin_op(lenv *e , lval* a, char* op) {
   
@@ -1008,6 +1026,7 @@ void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
 void lenv_add_builtins(lenv* e) { 
  
   /* Define variables */
+  lenv_add_builtin(e, "if", builtin_if);
   lenv_add_builtin(e, "def", builtin_def);
   lenv_add_builtin(e, "=",   builtin_put);
   lenv_add_builtin(e, "\\",  builtin_lambda);
@@ -1064,7 +1083,7 @@ int main(int argc, char** argv) {
   ",
   Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
 
-  puts("myLisp Version 0.0.0.0.8");
+  puts("myLisp Version 0.0.0.0.9");
   puts("Press Ctrl+c to Exit\n");
 
   lenv* e = lenv_new();
