@@ -786,6 +786,16 @@ lval* builtin_var(lenv* e, lval* a,char* func) {
 }
 
 
+lval* builtin_not(lenv* e, lval* a){
+  char* op = "!";
+  LASSERT_NUM(op, a, 1);
+  LASSERT_TYPE(op, a, 0, LVAL_NUM);
+  int r;
+  r=(!a->cell[0]->num);
+  return lval_num(r);
+}
+
+
 lval* builtin_eq(lenv* e, lval* a) {
   return builtin_cmp(e, a, "==");
 }
@@ -825,7 +835,6 @@ lval* builtin_def(lenv* e, lval* a) {
 lval* builtin_put(lenv* e, lval* a) {
   return builtin_var(e, a, "=");
 }
-
 
 lval* builtin_add(lenv* e, lval* a) {
   return builtin_op(e, a, "+");
@@ -1079,7 +1088,12 @@ void lenv_add_builtins(lenv* e) {
   lenv_add_builtin(e, "==", builtin_eq);
   lenv_add_builtin(e, "!=", builtin_ne);
   lenv_add_builtin(e, "||", builtin_or);
+  lenv_add_builtin(e, "or", builtin_or);
   lenv_add_builtin(e, "&&", builtin_and);
+  lenv_add_builtin(e, "and", builtin_and);
+  lenv_add_builtin(e, "!", builtin_not);
+  lenv_add_builtin(e, "not", builtin_not);
+
 }
 
 //Main Function
