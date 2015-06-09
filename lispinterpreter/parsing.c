@@ -1103,7 +1103,7 @@ int main(int argc, char** argv) {
   ",
   Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
 
-  puts("myLisp Version 0.0.0.0.9");
+  puts("myLisp Version 0.0.0.1.0");
   puts("Press Ctrl+c to Exit\n");
 
   lenv* e = lenv_new();
