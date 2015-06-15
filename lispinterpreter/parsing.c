@@ -349,7 +349,8 @@ void lval_expr_print(lval* v, char open, char close) {
 
 void lval_print_str(lval* v) {
   /* Make a Copy of the string */
-  char* escaped = lval_copy(v->str);
+  char* escaped = malloc(strlen(v->str)+1);
+  strcpy(escaped, v->str);
   /* Pass it through the escape function */
   escaped = mpcf_escape(escaped);
   /* Print it between " characters */
@@ -391,6 +392,21 @@ lval* lval_read_num(mpc_ast_t* t) {
     lval_num(x) : lval_err("invalid number");
 }
 
+lval* lval_read_str(mpc_ast_t* t) {
+  /* Cut off the final quote character */
+  t->contents[strlen(t->contents)-1] = '\0';
+  /* Copy the string missing out the first quote character */
+  char* unescaped = malloc(strlen(t->contents+1)+1);
+  strcpy(unescaped, t->contents+1);
+  /* Pass through the unescape function */
+  unescaped = mpcf_unescape(unescaped);
+  /* Construct a new lval using the string */
+  lval* str = lval_str(unescaped);
+  /* Free the string and return */
+  free(unescaped);
+  return str;
+}
+
 
 //Read values 
 lval* lval_read(mpc_ast_t* t) {
@@ -398,6 +414,7 @@ lval* lval_read(mpc_ast_t* t) {
   /* If Symbol or Number return conversion to that type */
   if (strstr(t->tag, "number")) { return lval_read_num(t); }
   if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
+  if (strstr(t->tag, "string")) { return lval_read_str(t); }
 
   /* If root (>) or sexpr then create empty list */
   lval* x = NULL;
@@ -1128,6 +1145,7 @@ int main(int argc, char** argv) {
 
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
+  mpc_parser_t* String = mpc_new("string");
   mpc_parser_t* Expression = mpc_new("expr");
   mpc_parser_t* Sexpr = mpc_new("sexpr");
   mpc_parser_t* Qexpr = mpc_new("qexpr");
@@ -1137,12 +1155,13 @@ int main(int argc, char** argv) {
   "                                           \
     number : /-?[0-9]+/; \
     symbol    : /[a-zA-Z0-9_+\\^\\-*\\/\\\\=<>!&|]+/  ;           \
+    string  : /\"(\\\\.|[^\"])*\"/ ;       \
     sexpr : '(' <expr>* ')' ;\
     qexpr : '{' <expr>* '}' ;\
-    expr      : <number> | <symbol> | <sexpr> | <qexpr>; \
+    expr      : <number> | <symbol> | <string> |<sexpr> | <qexpr>; \
     mylisp     : /^/ <expr>* /$/ ;                    \
   ",
-  Number, Symbol, Sexpr,Qexpr,Expression , Mylisp);
+  Number, Symbol,String, Sexpr,Qexpr,Expression , Mylisp);
 
   puts("myLisp Version 0.0.0.1.0");
   puts("Press Ctrl+c to Exit\n");
@@ -1161,7 +1180,7 @@ int main(int argc, char** argv) {
   	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
   	  /* On Success Print the AST */
       // printcell(lval_read(r.output));
-  	  // lval_expr_print(lval_read(r.output),'{','}');
+  	   // lval_expr_print(lval_read(r.output),'{','}');
       lval* x = lval_eval(e,lval_read(r.output));
   	  lval_println(x);
   	  lval_del(x);
@@ -1177,6 +1196,6 @@ int main(int argc, char** argv) {
 
   lenv_del(e);
 
-  mpc_cleanup(5, Number, Symbol, Sexpr, Qexpr, Expression, Mylisp);
+  mpc_cleanup(7, Number, Symbol, String, Sexpr, Qexpr, Expression, Mylisp);
   return 0;
 }
