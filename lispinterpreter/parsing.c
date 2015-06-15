@@ -73,7 +73,7 @@ typedef struct lval lval;
 typedef struct lenv lenv;
 
 
-enum { LVAL_NUM, LVAL_ERR, LVAL_SYM,LVAL_FUN ,LVAL_SEXPR , LVAL_QEXPR};
+enum { LVAL_NUM, LVAL_ERR, LVAL_SYM, LVAL_STR, LVAL_FUN ,LVAL_SEXPR , LVAL_QEXPR};
 
 typedef lval* (*lbuiltin)(lenv*,lval*);
 
@@ -83,6 +83,7 @@ struct lval{
 
   char* err;
   char* sym;
+  char* str;
 
   lbuiltin builtin;
   lenv* env;
@@ -152,6 +153,14 @@ lval* lval_sym(char* s) {
   return v;
 }
 
+lval* lval_str(char* s) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_STR;
+  v->str = malloc(strlen(s) + 1);
+  strcpy(v->str, s);
+  return v;
+}
+
 /* Create a new sexpr type lval */
 lval* lval_sexpr(void) {
   lval* v = malloc(sizeof(lval));
@@ -199,6 +208,7 @@ char* ltype_name(int t) {
     case LVAL_NUM: return "Number";
     case LVAL_ERR: return "Error";
     case LVAL_SYM: return "Symbol";
+    case LVAL_STR: return "String";
     case LVAL_SEXPR: return "S-Expression";
     case LVAL_QEXPR: return "Q-Expression";
     default: return "Unknown";
@@ -218,6 +228,7 @@ void lval_del(lval* v) {
     /* For Err or Sym free the string data */
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
+    case LVAL_STR: free(v->str); break;
     case LVAL_FUN: 
         if (!v->builtin) {
           lenv_del(v->env);
@@ -278,6 +289,9 @@ lval* lval_copy(lval* v) {
       x->sym = malloc(strlen(v->sym) + 1);
       strcpy(x->sym, v->sym); break;
 
+    case LVAL_STR: x->str = malloc(strlen(v->str) + 1);
+      strcpy(x->str, v->str); break;
+
     /* Copy Lists by copying each sub-expression */
     case LVAL_SEXPR:
     case LVAL_QEXPR:
@@ -333,6 +347,17 @@ void lval_expr_print(lval* v, char open, char close) {
   putchar(close);
 }
 
+void lval_print_str(lval* v) {
+  /* Make a Copy of the string */
+  char* escaped = lval_copy(v->str);
+  /* Pass it through the escape function */
+  escaped = mpcf_escape(escaped);
+  /* Print it between " characters */
+  printf("\"%s\"", escaped);
+  /* free the copied string */
+  free(escaped);
+}
+
 
 // Print values
 void lval_print(lval* v) {
@@ -340,6 +365,7 @@ void lval_print(lval* v) {
     case LVAL_NUM:   printf("%li", v->num); break;
     case LVAL_ERR:   printf("Error: %s", v->err); break;
     case LVAL_SYM:   printf("%s", v->sym); break;
+    case LVAL_STR:   lval_print_str(v); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
     case LVAL_QEXPR: lval_expr_print(v, '{', '}'); break;
     case LVAL_FUN:   
@@ -879,6 +905,7 @@ int lval_eq(lenv* e,lval* x, lval* y) {
     /* Compare Number Value */
     case LVAL_NUM: return (x->num == y->num);
 
+    case LVAL_STR: return (strcmp(x->str, y->str) == 0);
     /* Compare String Values */
     case LVAL_ERR: return (strcmp(x->err, y->err) == 0);
     case LVAL_SYM: return (strcmp(x->sym, y->sym) == 0);
