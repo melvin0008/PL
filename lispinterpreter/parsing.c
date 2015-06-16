@@ -63,6 +63,7 @@ void add_history(char* unused) {}
 #include <editline/history.h>
 #endif
 
+mpc_parser_t* Mylisp;
 
 
 //Declarations
@@ -424,6 +425,7 @@ lval* lval_read(mpc_ast_t* t) {
 
   /* Fill this list with any valid expression contained within */
   for (int i = 0; i < t->children_num; i++) {
+    if (strstr(t->children[i]->tag, "comment")) { continue; }
     if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
     if (strcmp(t->children[i]->contents, ")") == 0) { continue; }
     if (strcmp(t->children[i]->contents, "}") == 0) { continue; }
@@ -1086,6 +1088,73 @@ lval* builtin_op(lenv *e , lval* a, char* op) {
   lval_del(a); return x;
 }
 
+
+lval* builtin_load(lenv* e, lval* a){
+  LASSERT_NUM("load", a, 1);
+  LASSERT_TYPE("load", a, 0, LVAL_STR);
+
+  mpc_result_t r;
+  if(mpc_parse_contents(a->cell[0]->str,Mylisp,&r)){
+    
+    lval* expr = lval_read(r.output);
+    mpc_ast_delete(r.output);
+
+    while(expr->count)
+    {
+      lval* x = lval_eval(e,lval_pop(expr,0));  
+    
+      if(x->type==LVAL_ERR){lval_println(x);}
+      lval_del(x);
+    }
+    
+    // lval* x= lval_eval(e,lval_read(r.output));
+    // lval_println(x);
+
+    // lval_del(x);
+    // // lval_del(expr);    
+    // lval_del(a);
+
+    return lval_sexpr();
+  } 
+  else{
+    char* err_msg = mpc_err_string(r.error);
+    mpc_err_delete(r.error);
+  
+    //Create error message
+    lval* err = lval_err("Could not load Library %s", err_msg);
+    free(err_msg);
+    lval_del(a);
+    
+    /* Cleanup and return error */
+    return err;
+  }
+
+}
+
+lval* builtin_print(lenv* e, lval* a) {
+
+  for (int i = 0; i < a->count; i++) {
+    lval_print(a->cell[i]); putchar(' ');
+  }
+
+  putchar('\n');
+  lval_del(a);
+
+  return lval_sexpr();
+}
+
+lval* builtin_error(lenv* e, lval* a) {
+  LASSERT_NUM("error", a, 1);
+  LASSERT_TYPE("error", a, 0, LVAL_STR);
+
+  /* Construct Error from first argument */
+  lval* err = lval_err(a->cell[0]->str);
+
+  /* Delete arguments and return */
+  lval_del(a);
+  return err;
+}
+
 void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
   lval* k = lval_sym(name);
   lval* v = lval_fun(func);
@@ -1102,7 +1171,9 @@ void lenv_add_builtins(lenv* e) {
   lenv_add_builtin(e, "=",   builtin_put);
   lenv_add_builtin(e, "\\",  builtin_lambda);
   lenv_add_builtin(e, "lambda",  builtin_lambda);
-
+  lenv_add_builtin(e, "load",  builtin_load); 
+  lenv_add_builtin(e, "error", builtin_error);
+  lenv_add_builtin(e, "print", builtin_print);
 
   /* List Functions */
   lenv_add_builtin(e, "list", builtin_list);
@@ -1146,56 +1217,77 @@ int main(int argc, char** argv) {
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
   mpc_parser_t* String = mpc_new("string");
+  mpc_parser_t* Comment = mpc_new("comment");
   mpc_parser_t* Expression = mpc_new("expr");
   mpc_parser_t* Sexpr = mpc_new("sexpr");
   mpc_parser_t* Qexpr = mpc_new("qexpr");
-  mpc_parser_t* Mylisp = mpc_new("mylisp");
+  Mylisp = mpc_new("mylisp");
 
   mpca_lang(MPCA_LANG_DEFAULT,
   "                                           \
     number : /-?[0-9]+/; \
     symbol    : /[a-zA-Z0-9_+\\^\\-*\\/\\\\=<>!&|]+/  ;           \
     string  : /\"(\\\\.|[^\"])*\"/ ;       \
+    comment : /;[^\\r\\n]*/ ; \
     sexpr : '(' <expr>* ')' ;\
     qexpr : '{' <expr>* '}' ;\
-    expr      : <number> | <symbol> | <string> |<sexpr> | <qexpr>; \
+    expr      : <number> | <symbol> | <string> | <comment> |<sexpr> | <qexpr>; \
     mylisp     : /^/ <expr>* /$/ ;                    \
   ",
-  Number, Symbol,String, Sexpr,Qexpr,Expression , Mylisp);
-
-  puts("myLisp Version 0.0.0.1.0");
-  puts("Press Ctrl+c to Exit\n");
+  Number, Symbol,String, Comment, Sexpr,Qexpr,Expression , Mylisp);
 
   lenv* e = lenv_new();
   lenv_add_builtins(e);
 
-  while (1) {
+  if(argc==1)
+  {
+    puts("myLisp Version 0.0.0.1.0");
+    puts("Press Ctrl+c to Exit\n");
 
-  	char* input = readline("mylisp> ");
+   
+    while (1) {
 
-    add_history(input);
+    	char* input = readline("mylisp> ");
 
-    mpc_result_t r;
+      add_history(input);
 
-  	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
-  	  /* On Success Print the AST */
-      // printcell(lval_read(r.output));
-  	   // lval_expr_print(lval_read(r.output),'{','}');
-      lval* x = lval_eval(e,lval_read(r.output));
-  	  lval_println(x);
-  	  lval_del(x);
-  	  mpc_ast_delete(r.output);
-  	} else {
-  	  /* Otherwise Print the Error */
-  	  mpc_err_print(r.error);
-  	  mpc_err_delete(r.error);
-  	}
+      mpc_result_t r;
 
-    free(input);
+    	if (mpc_parse("<stdin>", input, Mylisp, &r)) {
+    	  /* On Success Print the AST */
+        // printcell(lval_read(r.output));
+    	   // lval_expr_print(lval_read(r.output),'{','}');
+        lval* x = lval_eval(e,lval_read(r.output));
+    	  lval_println(x);
+    	  lval_del(x);
+    	  mpc_ast_delete(r.output);
+    	} else {
+    	  /* Otherwise Print the Error */
+    	  mpc_err_print(r.error);
+    	  mpc_err_delete(r.error);
+    	}
+
+      free(input);
+    }
+  }
+  if (argc >= 2) {
+  
+    for (int i = 1; i < argc; i++) {
+      
+      /* Argument list with a single argument, the filename */
+      lval* args = lval_add(lval_sexpr(), lval_str(argv[i]));
+      
+       // Pass to builtin load and get the result 
+      lval* x = builtin_load(e, args);
+
+      /* If the result is an error be sure to print it */
+      if (x->type == LVAL_ERR) { lval_println(x); }
+      lval_del(x);
+    }
   }
 
   lenv_del(e);
 
-  mpc_cleanup(7, Number, Symbol, String, Sexpr, Qexpr, Expression, Mylisp);
+  mpc_cleanup(8, Number, Symbol, Comment , String, Sexpr, Qexpr, Expression, Mylisp);
   return 0;
 }
